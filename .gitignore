@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.Python
+
+# venv
+.venv/
+venv/
+
+# Dataset & outputs
+dataset/
+output/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env
+.env
+.env.*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
