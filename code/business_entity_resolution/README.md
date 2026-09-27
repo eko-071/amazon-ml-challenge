@@ -30,3 +30,14 @@ python code/business_entity_resolution/src/training/build_train_candidates.py --
 # Train (needs train_candidates_S*.tsv for BOTH sources present); saves xgb_model_v3.json
 python code/business_entity_resolution/src/training/train_model.py
 ```
+
+## Calibration (1.3-calibrate)
+
+Runs inside `train_model.py` (no separate script): fits the calibrator on
+one val half, sweeps the threshold on the other, saves `calibrator_v3.pkl`
++ `threshold_v3.json` next to the model. Pick the method explicitly:
+
+```bash
+python code/business_entity_resolution/src/training/train_model.py --cal-method isotonic  # large val sets
+python code/business_entity_resolution/src/training/train_model.py --cal-method sigmoid   # small val sets
+```
