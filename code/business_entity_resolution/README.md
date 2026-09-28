@@ -41,3 +41,16 @@ one val half, sweeps the threshold on the other, saves `calibrator_v3.pkl`
 python code/business_entity_resolution/src/training/train_model.py --cal-method isotonic  # large val sets
 python code/business_entity_resolution/src/training/train_model.py --cal-method sigmoid   # small val sets
 ```
+
+## Blocking index cache (3.1)
+
+Fit once per (split, source), then all chunked blocking runs load instead
+of refitting. Without cache, `bulletproof_multipass.py` falls back to
+fitting inline (same result, ~4x the fitting cost).
+
+```bash
+python code/business_entity_resolution/src/blocking/fit_target_index.py --split test --target_source 2
+python code/business_entity_resolution/src/blocking/fit_target_index.py --split test --target_source 3
+# chunks pick it up automatically via --cache-dir (default: cache/)
+python code/business_entity_resolution/src/bulletproof_multipass.py --target_source 2 --chunk 0
+```

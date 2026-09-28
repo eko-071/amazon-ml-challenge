@@ -6,6 +6,7 @@ import argparse
 import gc
 import re
 import os
+import sys
 
 def normalize_text(text):
     if not isinstance(text, str): return ""
@@ -34,6 +35,7 @@ if __name__ == '__main__':
     parser.add_argument('--target_source', type=int, required=True)
     parser.add_argument('--chunk', type=int, required=True)
     parser.add_argument('--total_chunks', type=int, default=4)
+    parser.add_argument('--cache-dir', type=str, default='cache')
     args = parser.parse_args()
 
     print(f"--- BULLETPROOF MULTI-PASS | Target: S{args.target_source} | Chunk: {args.chunk} ---", flush=True)
@@ -55,15 +57,30 @@ if __name__ == '__main__':
     del s1_df, st_df, s1_text
     gc.collect()
 
-    word_vec = TfidfVectorizer(analyzer='word', ngram_range=(1, 2), min_df=2, max_df=0.05, dtype=np.float32)
-    st_word_mat = word_vec.fit_transform(st_text)
-    s1_word_mat = word_vec.transform(s1_chunk_text)
+    # 3.1: load the one-time fitted index when present instead of refitting
+    # per chunk. Run blocking/fit_target_index.py first; without cache this
+    # falls back to fitting inline (same result, ~4x the fitting cost).
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blocking'))
+    try:
+        from fit_target_index import load_target_index, cache_prefix
+        _prefix = cache_prefix(args.cache_dir, 'test', args.target_source)
+        word_vec, st_word_mat, char_vec, st_char_mat = load_target_index(_prefix)
+        print("Loaded cached target index.", flush=True)
+        s1_word_mat = word_vec.transform(s1_chunk_text)
+        s1_char_mat = char_vec.transform(s1_chunk_text)
+        del word_vec, char_vec
+    except (FileNotFoundError, ImportError):
+        print("No cached index — fitting inline (run fit_target_index.py to skip this).", flush=True)
+        word_vec = TfidfVectorizer(analyzer='word', ngram_range=(1, 2), min_df=2, max_df=0.05, dtype=np.float32)
+        st_word_mat = word_vec.fit_transform(st_text)
+        s1_word_mat = word_vec.transform(s1_chunk_text)
 
-    char_vec = TfidfVectorizer(analyzer='char_wb', ngram_range=(4, 4), min_df=2, max_df=0.01, dtype=np.float32)
-    st_char_mat = char_vec.fit_transform(st_text)
-    s1_char_mat = char_vec.transform(s1_chunk_text)
+        char_vec = TfidfVectorizer(analyzer='char_wb', ngram_range=(4, 4), min_df=2, max_df=0.01, dtype=np.float32)
+        st_char_mat = char_vec.fit_transform(st_text)
+        s1_char_mat = char_vec.transform(s1_chunk_text)
 
-    del word_vec, char_vec, st_text, s1_chunk_text
+        del word_vec, char_vec
+    del st_text, s1_chunk_text
     gc.collect()
 
     BATCH_SIZE = 1000
