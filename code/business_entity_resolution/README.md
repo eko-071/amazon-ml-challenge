@@ -77,3 +77,15 @@ uv sync --directory code/business_entity_resolution/src  # picks up indic-transl
 inline by `build_train_candidates.py` so train/test blocking stay
 consistent. Language-agnostic — the signal that transfers to unseen
 conventions.
+
+## Shared features + inference (2.6-extract)
+
+`common/features.py`: the 8 rapidfuzz similarity features, imported by
+both training and inference (no copies). `inference/predict.py` scores
+candidates with the calibrated probabilities + swept threshold:
+
+```bash
+python code/business_entity_resolution/src/inference/predict.py --target_source 2 --chunk 0
+# inputs default to output/multipass_cands_s2_0.tsv, calibrator_v3.pkl, threshold_v3.json;
+# output defaults to output/matching_results_s2_0.tsv (override with --cand-file/--out-file)
+```

@@ -8,9 +8,8 @@ calibrates it and sweeps the decision threshold against macro-F_0.5
 (1.3-calibrate). Saves ``xgb_model_v3.json`` + ``calibrator_v3.pkl`` +
 ``threshold_v3.json``.
 
-NOTE: the rapidfuzz feature block below is still duplicated with
-``inference/predict.py`` until 2.6 extracts ``common/features.py`` —
-do not diverge the two copies in the meantime.
+NOTE: features come from ``common.features`` — shared with
+``inference/predict.py`` (2.6). Extend the feature set there, never here.
 
 Run from the project root:
     python code/business_entity_resolution/src/training/train_model.py
@@ -22,7 +21,6 @@ import glob
 import json
 import os
 import pickle
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,15 +28,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from rapidfuzz import fuzz
 from sklearn.calibration import CalibratedClassifierCV
 
+from common.features import FEATURES, compute_features
 from common.metrics import entity_split, macro_f05_sweep
-
-FEATURES = [
-    "name_exact", "name_ratio", "addr_ratio", "name_token_set",
-    "addr_token_set", "name_partial", "name_len_diff", "addr_num_match",
-]
 
 CAND_PATTERN = "final_results/train_candidates_S*.tsv"
 TRUTH_FILE = "dataset/train/train_ground_truth.tsv"
@@ -85,36 +78,6 @@ def attach_text(cands, s1_df, s2_df, s3_df):
     merged = pd.concat(out, ignore_index=True)
     merged["source"] = merged["candidate_entity_id"].str[:2]  # S2 / S3
     return merged
-
-
-def extract_nums(text):
-    return set(re.findall(r"\d+", text))
-
-
-def compute_features(cands):
-    n1 = cands["business_name_s1"].fillna("").str.lower().tolist()
-    n2 = cands["business_name_st"].fillna("").str.lower().tolist()
-    a1 = cands["business_address_s1"].fillna("").str.lower().tolist()
-    a2 = cands["business_address_st"].fillna("").str.lower().tolist()
-
-    cands["name_exact"] = [1 if x == y else 0 for x, y in zip(n1, n2)]
-    cands["name_ratio"] = [fuzz.ratio(x, y) for x, y in zip(n1, n2)]
-    cands["addr_ratio"] = [fuzz.ratio(x, y) for x, y in zip(a1, a2)]
-    cands["name_token_set"] = [fuzz.token_set_ratio(x, y) for x, y in zip(n1, n2)]
-    cands["addr_token_set"] = [fuzz.token_set_ratio(x, y) for x, y in zip(a1, a2)]
-    cands["name_partial"] = [fuzz.partial_ratio(x, y) for x, y in zip(n1, n2)]
-    cands["name_len_diff"] = [abs(len(x) - len(y)) for x, y in zip(n1, n2)]
-
-    num1 = [extract_nums(x) for x in a1]
-    num2 = [extract_nums(x) for x in a2]
-    num_match = []
-    for nums_s1, nums_st in zip(num1, num2):
-        if not nums_s1 or not nums_st:
-            num_match.append(-1)
-        else:
-            num_match.append(1 if nums_s1.intersection(nums_st) else 0)
-    cands["addr_num_match"] = num_match
-    return cands
 
 
 def calibrate_and_select_threshold(model, val_df, method="isotonic", seed=43):
