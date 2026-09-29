@@ -8,9 +8,9 @@ chunked query scripts load instead of refitting per chunk (previously
 Cache is keyed by ``{split}/{source}`` — train and test corpora must
 never share artifacts (different vocabularies, and reuse would leak).
 
-NOTE: imports ``normalize_text`` from the still-flat
-``bulletproof_multipass.py``. When 2.1 extracts ``common/normalize.py``,
-repoint this import there.
+NOTE: normalizes with ``common.normalize.full_normalize`` — the same
+function the query phase uses. Caches fitted before 2.1 (Latin-only
+``normalize_text``) are stale; refit after this change.
 
 Run from the project root, once per (split, target source):
     python code/business_entity_resolution/src/blocking/fit_target_index.py \\
@@ -29,7 +29,7 @@ import pandas as pd
 import scipy.sparse as sp
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from bulletproof_multipass import normalize_text
+from common.normalize import full_normalize
 
 
 def cache_prefix(cache_dir, split, target_source):
@@ -38,7 +38,7 @@ def cache_prefix(cache_dir, split, target_source):
 
 def fit_target_index(st_df, prefix):
     """Fit word+char TF-IDF on the target corpus; persist vectorizers + matrices."""
-    st_text = (st_df["business_name"].fillna("") + " " + st_df["business_address"].fillna("")).apply(normalize_text)
+    st_text = (st_df["business_name"].fillna("") + " " + st_df["business_address"].fillna("")).apply(full_normalize)
 
     word_vec = TfidfVectorizer(analyzer="word", ngram_range=(1, 2), min_df=2, max_df=0.05, dtype=np.float32)
     st_word_mat = word_vec.fit_transform(st_text)

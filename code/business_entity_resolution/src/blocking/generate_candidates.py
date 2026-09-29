@@ -1,24 +1,28 @@
+"""Chunked candidate generation / blocking query phase (item 2.1).
+
+Renamed from ``bulletproof_multipass.py``. Text is normalized with
+``common.normalize.full_normalize`` (transliteration + abbreviation
+folding) instead of the old Latin-only ``normalize_text``.
+
+Run from the project root, once per (target source, chunk):
+    python code/business_entity_resolution/src/blocking/generate_candidates.py \\
+        --target_source 2 --chunk 0
+"""
+
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 import scipy.sparse as sp
 import argparse
 import gc
-import re
 import os
 import sys
 
-def normalize_text(text):
-    if not isinstance(text, str): return ""
-    t = text.lower()
-    t = re.sub(r'[^\w\s]', ' ', t)
-    t = re.sub(r'\b(corporation|corp)\b', 'corp', t)
-    t = re.sub(r'\b(limited|ltd)\b', 'ltd', t)
-    t = re.sub(r'\b(private|pvt)\b', 'pvt', t)
-    t = re.sub(r'\b(company|co)\b', 'co', t)
-    t = re.sub(r'\b(road|rd)\b', 'rd', t)
-    t = re.sub(r'\b(street|st)\b', 'st', t)
-    return re.sub(r'\s+', ' ', t).strip()
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from common.normalize import full_normalize
+
 
 def get_top_k(csr_mat, row_idx, k):
     start = csr_mat.indptr[row_idx]
@@ -29,6 +33,7 @@ def get_top_k(csr_mat, row_idx, k):
     if len(data) <= k: return indices.tolist()
     top_k_idx = np.argpartition(data, -k)[-k:]
     return indices[top_k_idx].tolist()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -43,8 +48,8 @@ if __name__ == '__main__':
     s1_df = pd.read_csv("dataset/test/test_source1.tsv", sep='\t', dtype=str).fillna("")
     st_df = pd.read_csv(f"dataset/test/test_source{args.target_source}.tsv", sep='\t', dtype=str).fillna("")
 
-    s1_text = (s1_df['business_name'] + " " + s1_df['business_address']).apply(normalize_text)
-    st_text = (st_df['business_name'] + " " + st_df['business_address']).apply(normalize_text)
+    s1_text = (s1_df['business_name'] + " " + s1_df['business_address']).apply(full_normalize)
+    st_text = (st_df['business_name'] + " " + st_df['business_address']).apply(full_normalize)
     st_ids = st_df['entity_id'].values
 
     chunk_size = int(np.ceil(len(s1_df) / args.total_chunks))
@@ -60,7 +65,8 @@ if __name__ == '__main__':
     # 3.1: load the one-time fitted index when present instead of refitting
     # per chunk. Run blocking/fit_target_index.py first; without cache this
     # falls back to fitting inline (same result, ~4x the fitting cost).
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'blocking'))
+    # NOTE: the cached index must be fitted on full_normalize'd text too —
+    # refit after this change if a pre-2.1 cache exists.
     try:
         from fit_target_index import load_target_index, cache_prefix
         _prefix = cache_prefix(args.cache_dir, 'test', args.target_source)

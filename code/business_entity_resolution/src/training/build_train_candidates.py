@@ -6,11 +6,10 @@ target source — ``train_candidates_S2.tsv`` / ``train_candidates_S3.tsv``
 — with ``country`` kept as a *column*, never a filename partition
 (open-set rule: no stage may assume a fixed country list).
 
-NOTE (Tier 0 ordering wrinkle): this duplicates the TF-IDF blocking logic
-from the still-flat ``bulletproof_multipass.py`` because 2.1/3.1 haven't
-landed yet. Treat that copy as disposable — once ``fit_target_index.py`` /
-``generate_candidates.py`` exist, rewrite this to call them instead of
-keeping its own copy.
+NOTE (Tier 0 ordering wrinkle): the TF-IDF blocking loop here still
+duplicates ``blocking/generate_candidates.py`` — only the text
+normalization is shared (via ``common.normalize``). Once the query phase
+stabilizes, rewrite this to call it instead of keeping its own copy.
 
 Run from the project root, once per (target source, chunk):
     python code/business_entity_resolution/src/training/build_train_candidates.py \\
@@ -20,27 +19,15 @@ Run from the project root, once per (target source, chunk):
 import argparse
 import gc
 import os
-import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-
-# Disposable copy of bulletproof_multipass.normalize_text — do not extend
-# here; 2.1 extracts the real one into common/normalize.py.
-def normalize_text(text):
-    if not isinstance(text, str):
-        return ""
-    t = text.lower()
-    t = re.sub(r'[^\w\s]', ' ', t)
-    t = re.sub(r'\b(corporation|corp)\b', 'corp', t)
-    t = re.sub(r'\b(limited|ltd)\b', 'ltd', t)
-    t = re.sub(r'\b(private|pvt)\b', 'pvt', t)
-    t = re.sub(r'\b(company|co)\b', 'co', t)
-    t = re.sub(r'\b(road|rd)\b', 'rd', t)
-    t = re.sub(r'\b(street|st)\b', 'st', t)
-    return re.sub(r'\s+', ' ', t).strip()
+from common.normalize import full_normalize
 
 
 def get_top_k(csr_mat, row_idx, k):
@@ -64,8 +51,8 @@ def generate_for_source(s1_df, st_df, top_k=20, batch_size=1000):
     ``business_address``. Returns columns ``source1_entity_id``,
     ``candidate_entity_ids`` (comma-joined), ``country`` (from the S1 side).
     """
-    s1_text = (s1_df["business_name"].fillna("") + " " + s1_df["business_address"].fillna("")).apply(normalize_text)
-    st_text = (st_df["business_name"].fillna("") + " " + st_df["business_address"].fillna("")).apply(normalize_text)
+    s1_text = (s1_df["business_name"].fillna("") + " " + s1_df["business_address"].fillna("")).apply(full_normalize)
+    st_text = (st_df["business_name"].fillna("") + " " + st_df["business_address"].fillna("")).apply(full_normalize)
     st_ids = st_df["entity_id"].values
 
     word_vec = TfidfVectorizer(analyzer="word", ngram_range=(1, 2), min_df=2, max_df=0.05, dtype=np.float32)

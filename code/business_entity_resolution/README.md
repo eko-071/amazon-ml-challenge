@@ -52,5 +52,17 @@ fitting inline (same result, ~4x the fitting cost).
 python code/business_entity_resolution/src/blocking/fit_target_index.py --split test --target_source 2
 python code/business_entity_resolution/src/blocking/fit_target_index.py --split test --target_source 3
 # chunks pick it up automatically via --cache-dir (default: cache/)
-python code/business_entity_resolution/src/bulletproof_multipass.py --target_source 2 --chunk 0
+python code/business_entity_resolution/src/blocking/generate_candidates.py --target_source 2 --chunk 0
+```
+
+## Transliteration (2.1)
+
+`common/normalize.py`: `full_normalize()` = `transliterate_to_latin()` +
+`normalize_text()`. Deterministic rule-based script conversion covering
+all 8 Indic scripts audited in S2/S3 (Devanagari ~9-11%, Kannada/Telugu/
+Tamil/Gujarati/Bengali ~1% each, Malayalam ~0.5%, Gurmukhi ~0.25%);
+Latin/LatinExt passes through untouched. After adding the dependency:
+
+```bash
+uv sync --directory code/business_entity_resolution/src  # picks up indic-transliteration
 ```

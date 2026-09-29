@@ -3,6 +3,7 @@ name = "src"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "indic-transliteration>=2.3.0",
     "ipykernel>=7.3.0",
     "jellyfish>=1.2.1",
     "matplotlib>=3.11.2",
