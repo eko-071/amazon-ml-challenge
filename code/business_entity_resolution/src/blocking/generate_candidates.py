@@ -58,6 +58,24 @@ if __name__ == '__main__':
 
     s1_chunk_text = s1_text.iloc[start_idx:end_idx]
     s1_chunk_ids = s1_df['entity_id'].iloc[start_idx:end_idx].values
+    s1_chunk_addrs = s1_df['business_address'].iloc[start_idx:end_idx].tolist()
+
+    from fit_target_index import load_target_index, cache_prefix
+    from numeric_index import (
+        load_numeric_index, build_numeric_index,
+        extract_numeric_tokens, lookup_numeric_candidates,
+    )
+    _prefix = cache_prefix(args.cache_dir, 'test', args.target_source)
+
+    # 2.4 numeric net: load cached index, else a single-pass inline build
+    # (seconds — cheap enough to rebuild per chunk, unlike TF-IDF).
+    try:
+        num_index = load_numeric_index(_prefix + "_numeric.pkl")
+        print("Loaded cached numeric index.", flush=True)
+    except FileNotFoundError:
+        print("No cached numeric index — building inline.", flush=True)
+        num_index = build_numeric_index(st_df)
+    s1_chunk_nums = [extract_numeric_tokens(a) for a in s1_chunk_addrs]
 
     del s1_df, st_df, s1_text
     gc.collect()
@@ -68,8 +86,6 @@ if __name__ == '__main__':
     # NOTE: the cached index must be fitted on full_normalize'd text too —
     # refit after this change if a pre-2.1 cache exists.
     try:
-        from fit_target_index import load_target_index, cache_prefix
-        _prefix = cache_prefix(args.cache_dir, 'test', args.target_source)
         word_vec, st_word_mat, char_vec, st_char_mat = load_target_index(_prefix)
         print("Loaded cached target index.", flush=True)
         s1_word_mat = word_vec.transform(s1_chunk_text)
@@ -104,8 +120,9 @@ if __name__ == '__main__':
             for row_idx in range(end - i):
                 w_top = get_top_k(w_scores, row_idx, TOP_K_PER_NET)
                 c_top = get_top_k(c_scores, row_idx, TOP_K_PER_NET)
-                union_idx = set(w_top).union(set(c_top))
-                cands = [st_ids[idx] for idx in union_idx]
+                tfidf_ids = {st_ids[idx] for idx in set(w_top).union(set(c_top))}
+                num_ids = lookup_numeric_candidates(s1_chunk_nums[i + row_idx], num_index)
+                cands = sorted(tfidf_ids.union(num_ids))
                 s1_id = s1_chunk_ids[i + row_idx]
                 f.write(f"{s1_id}\t{','.join(cands)}\n")
             if (i // BATCH_SIZE) % 5 == 0:

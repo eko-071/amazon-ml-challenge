@@ -1,6 +1,6 @@
 """Generate training candidate files for both target sources (item 1.2).
 
-Same blocking logic as ``bulletproof_multipass.py`` but pointed at
+Same blocking logic as ``blocking/generate_candidates.py`` but pointed at
 ``dataset/train/`` instead of ``dataset/test/``. Writes one file per
 target source — ``train_candidates_S2.tsv`` / ``train_candidates_S3.tsv``
 — with ``country`` kept as a *column*, never a filename partition
@@ -28,6 +28,9 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from common.normalize import full_normalize
+from blocking.numeric_index import (
+    build_numeric_index, extract_numeric_tokens, lookup_numeric_candidates,
+)
 
 
 def get_top_k(csr_mat, row_idx, k):
@@ -65,6 +68,8 @@ def generate_for_source(s1_df, st_df, top_k=20, batch_size=1000):
 
     rows = []
     total = s1_word_mat.shape[0]
+    num_index = build_numeric_index(st_df)
+    s1_nums = s1_df["business_address"].fillna("").apply(extract_numeric_tokens).tolist()
     for i in range(0, total, batch_size):
         end = min(i + batch_size, total)
         w_scores = s1_word_mat[i:end].dot(st_word_mat.T)
@@ -73,9 +78,11 @@ def generate_for_source(s1_df, st_df, top_k=20, batch_size=1000):
             union_idx = set(get_top_k(w_scores, row_idx, top_k)).union(
                 set(get_top_k(c_scores, row_idx, top_k))
             )
+            tfidf_ids = {st_ids[idx] for idx in union_idx}
+            num_ids = lookup_numeric_candidates(s1_nums[i + row_idx], num_index)
             rows.append({
                 "source1_entity_id": s1_df["entity_id"].iloc[i + row_idx],
-                "candidate_entity_ids": ",".join(st_ids[idx] for idx in union_idx),
+                "candidate_entity_ids": ",".join(sorted(tfidf_ids.union(num_ids))),
                 "country": s1_df["country"].iloc[i + row_idx],
             })
     return pd.DataFrame(rows, columns=["source1_entity_id", "candidate_entity_ids", "country"])

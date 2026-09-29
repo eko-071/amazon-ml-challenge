@@ -19,6 +19,7 @@ Run from the project root, once per (split, target source):
 
 import argparse
 import os
+import pickle
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,7 @@ import scipy.sparse as sp
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from common.normalize import full_normalize
+from blocking.numeric_index import build_numeric_index, save_numeric_index
 
 
 def cache_prefix(cache_dir, split, target_source):
@@ -51,6 +53,8 @@ def fit_target_index(st_df, prefix):
     sp.save_npz(prefix + "_word_mat.npz", st_word_mat)
     joblib.dump(char_vec, prefix + "_char_vec.joblib")
     sp.save_npz(prefix + "_char_mat.npz", st_char_mat)
+    num_index = build_numeric_index(st_df)
+    save_numeric_index(num_index, prefix + "_numeric.pkl")
     return word_vec, st_word_mat, char_vec, st_char_mat
 
 
@@ -75,7 +79,8 @@ def main():
     st_df = pd.read_csv(f"{data_dir}/{args.split}_source{args.target_source}.tsv", sep="\t", dtype=str).fillna("")
     prefix = cache_prefix(args.cache_dir, args.split, args.target_source)
     _, w_mat, _, c_mat = fit_target_index(st_df, prefix)
-    print(f"Fitted on {len(st_df)} rows; word matrix {w_mat.shape}, char matrix {c_mat.shape} -> {prefix}_*")
+    n_tok = len(pickle.load(open(prefix + "_numeric.pkl", "rb")))
+    print(f"Fitted on {len(st_df)} rows; word matrix {w_mat.shape}, char matrix {c_mat.shape}, {n_tok} numeric tokens -> {prefix}_*")
 
 
 if __name__ == "__main__":

@@ -45,8 +45,9 @@ python code/business_entity_resolution/src/training/train_model.py --cal-method 
 ## Blocking index cache (3.1)
 
 Fit once per (split, source), then all chunked blocking runs load instead
-of refitting. Without cache, `bulletproof_multipass.py` falls back to
-fitting inline (same result, ~4x the fitting cost).
+of refitting. The fit phase also builds the numeric-token index (2.4).
+Without cache, `generate_candidates.py` falls back to fitting inline
+(same result, ~4x the fitting cost).
 
 ```bash
 python code/business_entity_resolution/src/blocking/fit_target_index.py --split test --target_source 2
@@ -66,3 +67,13 @@ Latin/LatinExt passes through untouched. After adding the dependency:
 ```bash
 uv sync --directory code/business_entity_resolution/src  # picks up indic-transliteration
 ```
+
+## Numeric-token blocking (2.4)
+
+`blocking/numeric_index.py`: inverted index over 2+ digit address tokens
+(`PIN`/street numbers), capped at `max_df=0.05`. Built once per corpus by
+`fit_target_index.py` (`{prefix}_numeric.pkl`), loaded by
+`generate_candidates.py` (inline single-pass build as fallback), and built
+inline by `build_train_candidates.py` so train/test blocking stay
+consistent. Language-agnostic — the signal that transfers to unseen
+conventions.
