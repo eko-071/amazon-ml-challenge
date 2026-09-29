@@ -48,6 +48,9 @@ if __name__ == '__main__':
     s1_df = pd.read_csv("dataset/test/test_source1.tsv", sep='\t', dtype=str).fillna("")
     st_df = pd.read_csv(f"dataset/test/test_source{args.target_source}.tsv", sep='\t', dtype=str).fillna("")
 
+    # 2.3 MEASURED AND REVERTED: separate name/address nets were A/B
+    # tested against concatenated text (2000 S1, ~19k pool, top-20) and
+    # lost or tied at every weight — concatenated text stays.
     s1_text = (s1_df['business_name'] + " " + s1_df['business_address']).apply(full_normalize)
     st_text = (st_df['business_name'] + " " + st_df['business_address']).apply(full_normalize)
     st_ids = st_df['entity_id'].values
@@ -83,8 +86,7 @@ if __name__ == '__main__':
     # 3.1: load the one-time fitted index when present instead of refitting
     # per chunk. Run blocking/fit_target_index.py first; without cache this
     # falls back to fitting inline (same result, ~4x the fitting cost).
-    # NOTE: the cached index must be fitted on full_normalize'd text too —
-    # refit after this change if a pre-2.1 cache exists.
+    # NOTE: caches fitted before 2.1 (Latin-only text) are stale — refit.
     try:
         word_vec, st_word_mat, char_vec, st_char_mat = load_target_index(_prefix)
         print("Loaded cached target index.", flush=True)

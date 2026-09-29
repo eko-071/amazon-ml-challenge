@@ -754,7 +754,18 @@ spec, plan for it explicitly:**
 
 ### 2.3 Separate name and address vectorization instead of concatenating fields
 
-**Verdict: subjective — measure-first (A/B recall@K on val; total-K cap mandatory, 0.7/0.3 weight is a guess).**
+**Verdict: measured — REJECTED at small scale (see result below). Do not
+re-implement without a full-scale (5M-target) A/B showing otherwise.**
+
+**Measured result (2000 sampled S1, ~19k target pool, top-20, same numeric
+net both sides):** concat S2 0.9988 / S3 0.9972 vs best split weight
+(0.3/0.7 S2 0.9979; 0.5/0.5 S3 0.9972 — tie). Full sweep:
+name=1.0 → 0.9657/0.9753; 0.9 → 0.9711/0.9803; 0.7 → 0.9843/0.9895;
+0.5 → 0.9970/0.9972; 0.3 → 0.9979/0.9961; 0.0 → 0.9530/0.9499.
+Concat won or tied everywhere; avg candidates/S1 indistinguishable
+(~64-67). Reverted to concatenated text; the dilution hypothesis may
+still hold at full 5M-target scale, where top-20 covers far less of the
+corpus — revisit only with a full-scale measurement.
 
 **File:** `bulletproof_multipass.py`
 

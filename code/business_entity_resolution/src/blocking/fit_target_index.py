@@ -1,9 +1,16 @@
-"""One-time fit+cache phase for blocking indices (item 3.1).
+"""One-time fit+cache phase for blocking indices (items 3.1, 2.4).
 
-Fits the TF-IDF word/char vectorizers on a target-source corpus once and
-persists the fitted vectorizers plus the transformed target matrices, so
-chunked query scripts load instead of refitting per chunk (previously
-16 redundant fits per full run).
+Fits TF-IDF vectorizers on a target-source corpus once and persists the
+fitted vectorizers plus the transformed target matrices, so chunked query
+scripts load instead of refitting per chunk.
+
+2.3 MEASURED AND REVERTED: separate name/address nets (0.7/0.3 weighted)
+were A/B tested against concatenated text on 2000 sampled S1 entities
+(~19k target pool, top-20, same numeric net both sides) — concat won or
+tied at every weight (S2 0.9988 vs best split 0.9979; S3 0.9972 vs
+0.9972). Per the measure-first rule the split was not committed. If
+full-scale (5M-target) dilution ever suggests revisiting, the sweep
+harness is one script away; see pipeline.md 2.3.
 
 Cache is keyed by ``{split}/{source}`` — train and test corpora must
 never share artifacts (different vocabularies, and reuse would leak).
@@ -48,7 +55,7 @@ def fit_target_index(st_df, prefix):
     char_vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(4, 4), min_df=2, max_df=0.01, dtype=np.float32)
     st_char_mat = char_vec.fit_transform(st_text)
 
-    os.makedirs(os.path.dirname(prefix), exist_ok=True)
+    os.makedirs(os.path.dirname(prefix) or ".", exist_ok=True)
     joblib.dump(word_vec, prefix + "_word_vec.joblib")
     sp.save_npz(prefix + "_word_mat.npz", st_word_mat)
     joblib.dump(char_vec, prefix + "_char_vec.joblib")

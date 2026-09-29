@@ -58,7 +58,7 @@ def load_candidates(pattern=CAND_PATTERN):
 
 def add_labels(cands, truth_df):
     pairs = truth_df.assign(_m=truth_df["matched_entity_ids"].str.split(",")).explode("_m")
-    pairs = pairs[pairs["_m"] != ""]
+    pairs = pairs[pairs["_m"].notna() & (pairs["_m"] != "")]
     links = set(zip(pairs["source1_entity_id"], pairs["_m"]))
     cands["is_match"] = [
         1 if (src, tgt) in links else 0
