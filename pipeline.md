@@ -876,7 +876,26 @@ surface such pairs into the top-K if the surrounding text differs a lot.
 
 ### 2.5 Soft, non-hard-filtering country-based blocking
 
-**Verdict: subjective — measure-first (hard filter is forbidden, objective; soft partitioning needs the same-country rate number first — skip if cross-country >1-2%).**
+**Verdict: measured — SKIPPED (see result below). No country-aware
+blocking; country stays an opaque column end to end.**
+
+**Measured result (200k sampled S1 → 692,008 true pairs, seeded):**
+same-country 692,008 (100.0000%), cross-country 0, missing 0.
+The train data is regime-clean: every true match is same-country, so
+partitioning would be recall-safe *on train-like data* — and that is
+exactly why it was skipped:
+
+1. The 100% figure smells constructed (per-country entity pools), which
+   makes the test-only France set the likely probe for cross-country
+   generalization. Partitioned indices are machinery purpose-built to
+   mishandle the unseen label; the current pipeline treats country as
+   opaque (verified: no `US`/`India`/`France` literals, no country
+   filtering or filename partitioning anywhere in `src/` — the only
+   country touch is the diagnostic `groupby` printout in `train_model.py`).
+2. The payoff is scoring-step compute (~2-3x), while the cost is fallback
+   routing across 4 files plus a new France-mishandling failure mode.
+   Revisit only if full-scale blocking time becomes the bottleneck *and*
+   France-France same-country structure is confirmed on test.
 
 **File:** `bulletproof_multipass.py`
 
