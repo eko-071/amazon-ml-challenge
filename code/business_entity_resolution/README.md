@@ -116,3 +116,18 @@ python code/business_entity_resolution/src/inference/predict.py --target_source 
   --calibrator calibrator_v4.pkl --threshold threshold_v4.json \
   --embed-sidecar output/test_embed_s2_0.tsv
 ```
+
+## Operational notes
+
+- Run everything with the project interpreter
+  (`code/business_entity_resolution/src/.venv/bin/python`), not system
+  python — only the venv has the pinned deps. CWD must be the repo root
+  (all scripts use CWD-relative `dataset/`, `output/`, `cache/`,
+  `final_results/` paths).
+- Disk budget (measured 2026-09-30 via `scripts/probe_cache_size.py` on a
+  200k-row sample of `train_source3.tsv`): ~1.24GB/combo linear
+  extrapolation, ~4.96GB across all 4 split×source combos vs 7.92GB free
+  — fits with ~3GB margin. Linear is a conservative upper bound (vocab
+  growth is sublinear under `min_df`/`max_df`). If free disk shrinks
+  before the real fit: (1) tighten `min_df`/`max_df`, (2) fit+use+discard
+  one combo at a time, (3) external disk.

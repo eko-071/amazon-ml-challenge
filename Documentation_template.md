@@ -31,6 +31,26 @@
 - **Candidate pairs generated:** [total]
 - **How you ensured true matches were not lost:**
 
+**Known limitation — embedding signal is matcher-stage only:** cross-script
+name/address matching (e.g. Devanagari business names against a
+Latin-script Source-1 reference) is handled via a transliteration pass
+(all non-Latin scripts romanized before TF-IDF vectorization) combined
+with word/character n-gram overlap. A multilingual sentence-embedding
+signal was also implemented, but scoped to matcher-stage scoring only (a
+cosine-similarity feature computed over the post-blocking candidate set)
+rather than full approximate-nearest-neighbor blocking retrieval, due to
+hardware constraints in the development environment (no GPU, limited RAM
+and disk). This means candidates that transliteration + n-gram overlap
+fail to surface never reach the embedding signal at all — the embedding
+feature can help the matcher correctly score a cross-script pair once
+blocking has already found it, but cannot recover a true match that
+blocking missed entirely. Cross-script blocking recall was spot-checked
+at small scale (2 of 2 known cross-script pairs correctly retrieved) but
+has not been verified at full dataset scale. If additional compute becomes
+available, extending the embedding signal to full blocking-stage retrieval
+(via a FAISS or equivalent ANN index) would close this gap and is the most
+likely remaining lever for cross-script recall improvement.
+
 ---
 
 ## 4. Matching Model
