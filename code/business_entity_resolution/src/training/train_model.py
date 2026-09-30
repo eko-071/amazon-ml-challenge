@@ -31,6 +31,7 @@ import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 
 from common.features import FEATURES, EMBED_FEATURES, compute_features, add_embedding_features
+from common.labels import attach_is_match
 from common.metrics import entity_split, macro_f05_sweep
 
 CAND_PATTERN = "final_results/train_candidates_S*.tsv"
@@ -50,14 +51,7 @@ def load_candidates(pattern=CAND_PATTERN):
 
 
 def add_labels(cands, truth_df):
-    pairs = truth_df.assign(_m=truth_df["matched_entity_ids"].str.split(",")).explode("_m")
-    pairs = pairs[pairs["_m"].notna() & (pairs["_m"] != "")]
-    links = set(zip(pairs["source1_entity_id"], pairs["_m"]))
-    cands["is_match"] = [
-        1 if (src, tgt) in links else 0
-        for src, tgt in zip(cands["source1_entity_id"], cands["candidate_entity_id"])
-    ]
-    return cands
+    return attach_is_match(cands, truth_df)
 
 
 def attach_text(cands, s1_df, s2_df, s3_df):
