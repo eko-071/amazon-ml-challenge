@@ -30,7 +30,7 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 
-from common.features import FEATURES, compute_features
+from common.features import FEATURES, EMBED_FEATURES, compute_features, add_embedding_features
 from common.metrics import entity_split, macro_f05_sweep
 
 CAND_PATTERN = "final_results/train_candidates_S*.tsv"
@@ -80,7 +80,7 @@ def attach_text(cands, s1_df, s2_df, s3_df):
     return merged
 
 
-def calibrate_and_select_threshold(model, val_df, method="isotonic", seed=43):
+def calibrate_and_select_threshold(model, val_df, method="isotonic", seed=43, features=None):
     """Calibrate an already-fit model and sweep the F_0.5 threshold.
 
     Splits validation entities into calibration / threshold-selection
@@ -89,6 +89,7 @@ def calibrate_and_select_threshold(model, val_df, method="isotonic", seed=43):
     prefit is deprecated) so calibration never refits the base model.
     Returns ``(calibrator, best_threshold, best_score)``.
     """
+    features = list(features) if features is not None else list(FEATURES)
     val_ids = list(val_df["source1_entity_id"].unique())
     cal_ids = entity_split(val_ids, val_frac=0.5, seed=seed)
     cal_mask = val_df["source1_entity_id"].isin(cal_ids)
@@ -100,17 +101,18 @@ def calibrate_and_select_threshold(model, val_df, method="isotonic", seed=43):
         calibrator = CalibratedClassifierCV(base, method=method)
     except ImportError:  # sklearn < 1.6
         calibrator = CalibratedClassifierCV(model, method=method, cv="prefit")
-    calibrator.fit(val_df.loc[cal_mask, FEATURES], val_df.loc[cal_mask, "is_match"])
+    calibrator.fit(val_df.loc[cal_mask, features], val_df.loc[cal_mask, "is_match"])
 
     thresh_df = val_df.loc[~cal_mask].copy()
-    thresh_df["prob"] = calibrator.predict_proba(thresh_df[FEATURES])[:, 1]
+    thresh_df["prob"] = calibrator.predict_proba(thresh_df[features])[:, 1]
     results = macro_f05_sweep(thresh_df, np.arange(0.1, 0.95, 0.025))
     best_thresh = max(results, key=results.get)
     return calibrator, float(best_thresh), float(results[best_thresh])
 
 
 def main(train_dir="dataset/train", cand_pattern=CAND_PATTERN, model_out=MODEL_OUT,
-         calibrator_out=CALIBRATOR_OUT, threshold_out=THRESHOLD_OUT, cal_method="isotonic"):
+         calibrator_out=CALIBRATOR_OUT, threshold_out=THRESHOLD_OUT, cal_method="isotonic",
+         embed_sidecar=None):
     print("Training multi-source XGBoost model (S2+S3)...")
     truth_df = pd.read_csv(TRUTH_FILE if train_dir == "dataset/train" else f"{train_dir}/train_ground_truth.tsv", sep="\t", dtype=str)
 
@@ -122,6 +124,13 @@ def main(train_dir="dataset/train", cand_pattern=CAND_PATTERN, model_out=MODEL_O
     s3 = pd.read_csv(f"{train_dir}/train_source3.tsv", sep="\t", dtype=str).fillna("")
     cands = attach_text(cands, s1, s2, s3)
     cands = compute_features(cands)
+    features = list(FEATURES)
+    if embed_sidecar is not None:
+        sidecar = pd.read_csv(embed_sidecar, sep="\t", dtype=str)
+        sidecar["name_embedding_cosine"] = sidecar["name_embedding_cosine"].astype(float)
+        cands = add_embedding_features(cands, sidecar)
+        features = features + EMBED_FEATURES
+    print(f"feature set ({len(features)}): {features}")
 
     print(cands.groupby(["source", "country"])["is_match"].agg(["count", "mean"]))
 
@@ -136,15 +145,15 @@ def main(train_dir="dataset/train", cand_pattern=CAND_PATTERN, model_out=MODEL_O
         scale_pos_weight=0.8,
         random_state=42,
     )
-    model.fit(cands.loc[train_mask, FEATURES], cands.loc[train_mask, "is_match"])
+    model.fit(cands.loc[train_mask, features], cands.loc[train_mask, "is_match"])
 
     val_df = cands.loc[~train_mask].copy()
-    val_df["prob"] = model.predict_proba(val_df[FEATURES])[:, 1]
+    val_df["prob"] = model.predict_proba(val_df[features])[:, 1]
     for t, s in sorted(macro_f05_sweep(val_df, [0.3, 0.5, 0.7, 0.9]).items()):
         print(f"val macro F_0.5 @ {t:.2f}: {s:.4f} (raw scores)")
 
     calibrator, best_thresh, best_score = calibrate_and_select_threshold(
-        model, val_df, method=cal_method
+        model, val_df, method=cal_method, features=features
     )
     print(f"Calibrated ({cal_method}): best threshold {best_thresh:.3f}, "
           f"val macro F_0.5 {best_score:.4f}")
@@ -154,7 +163,7 @@ def main(train_dir="dataset/train", cand_pattern=CAND_PATTERN, model_out=MODEL_O
         pickle.dump(calibrator, f)
     with open(threshold_out, "w") as f:
         json.dump({"threshold": best_thresh, "val_macro_f05": best_score,
-                   "method": cal_method}, f)
+                   "method": cal_method, "features": features}, f)
     print(f"Saved {model_out}, {calibrator_out}, {threshold_out}")
 
 
@@ -166,7 +175,11 @@ if __name__ == "__main__":
     parser.add_argument("--calibrator-out", default=CALIBRATOR_OUT)
     parser.add_argument("--threshold-out", default=THRESHOLD_OUT)
     parser.add_argument("--cal-method", default="isotonic", choices=["isotonic", "sigmoid"])
+    parser.add_argument("--embed-sidecar", default=None,
+                        help="Pair-similarity TSV from blocking/embedding_index.py; "
+                             "adds name_embedding_cosine to the feature set.")
     args = parser.parse_args()
     main(train_dir=args.train_dir, cand_pattern=args.cand_pattern,
          model_out=args.model_out, calibrator_out=args.calibrator_out,
-         threshold_out=args.threshold_out, cal_method=args.cal_method)
+         threshold_out=args.threshold_out, cal_method=args.cal_method,
+         embed_sidecar=args.embed_sidecar)

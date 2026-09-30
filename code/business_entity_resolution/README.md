@@ -89,3 +89,30 @@ python code/business_entity_resolution/src/inference/predict.py --target_source 
 # inputs default to output/multipass_cands_s2_0.tsv, calibrator_v3.pkl, threshold_v3.json;
 # output defaults to output/matching_results_s2_0.tsv (override with --cand-file/--out-file)
 ```
+
+## Embedding similarity, matcher-only slice (2.2)
+
+`blocking/embedding_index.py` encodes deduplicated entity names once and
+writes per-pair cosine sidecars — no FAISS, no ANN index (full retrieval
+stays deferred: needs GPU + ~8GB storage). Both sides take the same
+`--embed-sidecar`; the feature set is recorded in `threshold_v3.json` and
+predict refuses a mismatch. Needs `sentence-transformers` (in
+`pyproject.toml`, **not** installed here — disk; `uv sync` where you run
+it). Default model `paraphrase-multilingual-MiniLM-L12-v2` (Apache-2.0,
+~118M params, under the 8B ceiling):
+
+```bash
+# 1. sidecars (train candidates + test candidates, same encoder)
+python code/business_entity_resolution/src/blocking/embedding_index.py \
+  --pairs final_results/train_candidates_S2_0.tsv \
+  --source1-tsv dataset/train/train_source1.tsv --target-tsv dataset/train/train_source2.tsv \
+  --out final_results/train_embed_S2_0.tsv
+# 2. train with the 9th feature (use v4 names to keep v3 artifacts intact)
+python code/business_entity_resolution/src/training/train_model.py \
+  --embed-sidecar final_results/train_embed_S2_0.tsv \
+  --model-out xgb_model_v4.json --calibrator-out calibrator_v4.pkl --threshold-out threshold_v4.json
+# 3. predict with the test sidecar
+python code/business_entity_resolution/src/inference/predict.py --target_source 2 --chunk 0 \
+  --calibrator calibrator_v4.pkl --threshold threshold_v4.json \
+  --embed-sidecar output/test_embed_s2_0.tsv
+```

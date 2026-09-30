@@ -17,6 +17,10 @@ FEATURES = [
     "addr_token_set", "name_partial", "name_len_diff", "addr_num_match",
 ]
 
+# Optional extension from blocking/embedding_index.py sidecars. Joined,
+# never computed, here — so this module stays free of model dependencies.
+EMBED_FEATURES = ["name_embedding_cosine"]
+
 
 def extract_nums(text):
     return set(re.findall(r"\d+", text))
@@ -50,4 +54,24 @@ def compute_features(cands):
         else:
             num_match.append(1 if nums_s1.intersection(nums_st) else 0)
     cands["addr_num_match"] = num_match
+    return cands
+
+
+def add_embedding_features(cands, sidecar_df):
+    """Join precomputed pair cosine(s) onto the candidate frame.
+
+    ``sidecar_df`` has ``source1_entity_id``/``candidate_entity_id``/
+    ``name_embedding_cosine`` (see ``blocking/embedding_index.py``).
+    Raises if any candidate pair lacks a similarity — a stale sidecar
+    must fail loudly, never silently dilute into NaNs.
+    """
+    before = len(cands)
+    cands = cands.merge(
+        sidecar_df[["source1_entity_id", "candidate_entity_id"] + EMBED_FEATURES],
+        on=["source1_entity_id", "candidate_entity_id"],
+        how="left",
+    )
+    assert len(cands) == before, "sidecar join duplicated rows — rebuild it from these candidates"
+    missing = cands[EMBED_FEATURES[0]].isna().sum()
+    assert missing == 0, f"sidecar covers {before - missing}/{before} pairs — rebuild it from these candidates"
     return cands
